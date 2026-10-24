@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GravSim 2D — Laboratório de Física Espacial</title>
+<style>
+  :root{
+    --bg:#05060a;
+    --panel:rgba(16,18,26,0.82);
+    --panel-border:rgba(255,255,255,0.09);
+    --accent:#00d4ff;
+    --accent2:#7b2cff;
+    --text:#e8eaf2;
+    --muted:#94a3b8;
+    --danger:#ff4d6d;
+    --ok:#06d6a0;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;background:var(--bg);color:var(--text);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,sans-serif;overflow:hidden;}
+
+  #simCanvas{
+    display:block;width:100vw;height:100vh;background:#030307;cursor:crosshair;
+  }
+
+  /* Overlay de estatísticas (canto superior esquerdo) */
+  #stats{
+    position:absolute;top:14px;left:14px;z-index:15;
+    background:rgba(8,10,16,0.7);border:1px solid var(--panel-border);
+    padding:10px 14px;border-radius:10px;backdrop-filter:blur(8px);
+    display:flex;gap:20px;align-items:center;user-select:none;
+  }
+  .stat{display:flex;flex-direction:column;}
+  .stat .label{font-size:11px;color:var(--muted);text-transform:uppercase;
+    letter-spacing:0.08em;font-weight:600;}
+  .stat .value{font-size:16px;font-weight:800;color:var(--accent);
+    font-family:ui-monospace,SFMono-Regular,monospace;}
+
+  /* Painel lateral */
+  #panel{
+    position:fixed;right:0;top:0;bottom:0;width:360px;max-width:92vw;
+    background:var(--panel);border-left:1px solid var(--panel-border);
+    overflow-y:auto;padding:20px 18px 40px;z-index:20;
+    backdrop-filter:blur(14px);
+    box-shadow:-8px 0 24px rgba(0,0,0,0.35);
+  }
+  #panel.hidden{transform:translateX(100%);transition:transform .28s ease;}
+
+  .panel-header{margin-bottom:24px;}
+  .panel-header h2{font-size:20px;letter-spacing:-0.5px;margin-bottom:4px;
+    background:linear-gradient(90deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+  .panel-sub{font-size:12px;color:var(--muted);}
+
+  .section{margin-bottom:26px;}
+  .section:last-child{margin-bottom:10px;}
+  .section-title{
+    font-size:12.5px;font-weight:700;color:var(--accent);
+    margin-bottom:12px;display:flex;align-items:center;gap:8px;
+    text-transform:uppercase;letter-spacing:0.06em;
+  }
+
+  .control{margin-bottom:12px;}
+  .control label{display:flex;justify-content:space-between;font-size:13px;
+    margin-bottom:6px;color:var(--text);}
+  .control label span{font-weight:700;color:var(--accent);}
+  input[type=range]{
+    width:100%;height:6px;-webkit-appearance:none;background:rgba(255,255,255,0.08);
+    border-radius:3px;outline:none;cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:16px;height:16px;background:var(--accent);
+    border-radius:50%;cursor:pointer;box-shadow:0 0 10px var(--accent);
+  }
+  input[type=range]::-webkit-slider-thumb:hover{background:#fff;}
+
+  label.checkbox{
+    display:flex;align-items:center;gap:10px;font-size:13.5px;
+    color:var(--text);cursor:pointer;margin-bottom:9px;
+  }
+  label.checkbox input{accent-color:var(--accent);width:16px;height:16px;cursor:pointer;}
+
+  .btn{
+    width:100%;padding:10px 14px;border:1px solid var(--panel-border);
+    border-radius:8px;background:rgba(255,255,255,0.05);color:var(--text);
+    font-size:13px;font-weight:600;cursor:pointer;transition:all .18s;
+  }
+  .btn:hover{background:rgba(255,255,255,0.12);border-color:rgba(255,255,255,0.25);}
+  .btn:active{transform:translateY(1px);}
+  .btn-primary{
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    border:none;color:#011627;
+  }
+  .btn-primary:hover{filter:brightness(1.1);color:#011627;}
+  .btn-danger{color:var(--danger);border-color:rgba(255,77,109,0.35);}
+  .btn-danger:hover{background:rgba(255,77,109,0.15);}
+  .btn-small{padding:8px 12px;font-size:12px;}
+
+  .preset-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;}
+  .preset{
+    padding:9px 10px;font-size:12px;border:1px solid var(--panel-border);
+    border-radius:7px;background:rgba(255,255,255,0.04);color:var(--text);
+    cursor:pointer;text-align:left;transition:.18s;
+  }
+  .preset:hover{background:rgba(255,255,255,0.1);border-color:var(--accent);color:var(--accent);}
+
+  /* Inspector (objeto selecionado) */
+  .inspector-section{background:rgba(255,255,255,0.04);border:1px solid var(--panel-border);
+    border-radius:10px;padding:14px;margin-top:6px;}
+  .selected-name{font-weight:700;color:var(--accent);font-size:14px;
+    margin-bottom:10px;word-break:break-all;}
+  .info-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  .info-table td{padding:5px 4px;border-bottom:1px solid rgba(255,255,255,0.06);}
+  .info-table .k{color:var(--muted);width:48%;}
+  .info-table .v{color:var(--text);font-family:ui-monospace,monospace;width:52%;text-align:right;}
+  .muted{color:var(--muted);font-size:12px;}
+
+  .hint{
+    margin-top:24px;padding-top:16px;border-top:1px solid var(--panel-border);
+    font-size:12.5px;color:var(--muted);line-height:1.6;
+  }
+  .hint strong{color:var(--text);}
+
+  /* Botão menu (mobile) */
+  #menu-toggle{
+    display:none;position:fixed;top:12px;left:12px;z-index:25;
+    background:rgba(16,18,26,0.85);border:1px solid var(--panel-border);
+    color:var(--text);padding:8px 12px;border-radius:8px;cursor:pointer;
+    font-size:14px;backdrop-filter:blur(8px);
+  }
+
+  @media (max-width:768px){
+    #simCanvas{width:100vw;}
+    #panel{width:85vw;transform:translateX(100%);}
+    #panel.open{transform:translateX(0);}
+    #menu-toggle{display:block;}
+    #stats{left:8px;top:8px;gap:14px;padding:8px 10px;}
+    .stat .value{font-size:14px;}
+  }
+</style>
+</head>
+<body>
+
+<div id="stats">
+  <div class="stat"><span class="label">FPS</span><span id="fps" class="value">0</span></div>
+  <div class="stat"><span class="label">Objetos</span><span id="bodyCount" class="value">0</span></div>
+  <div class="stat"><span class="label">Constante G</span><span id="gVal" class="value">1.00</span></div>
+</div>
+
+<canvas id="simCanvas"></canvas>
+<button id="menu-toggle" class="menu-toggle">☰</button>
+
+<aside id="panel">
+  <div class="panel-header">
+    <h2>GravSim 2D</h2>
+    <p class="panel-sub">Simulador de gravidade newtoniana</p>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Simulação</div>
+    <button id="btnPause" class="btn btn-primary">⏸ Pausar</button>
+    <button id="btnReset" class="btn">↻ Reiniciar simulação</button>
+    <button id="btnClear" class="btn btn-danger">🗑 Limpar todos os objetos</button>
+
+    <div class="control">
+      <label>Velocidade da simulação <span id="valSpeed">1.0×</span></label>
+      <input type="range" id="sldSpeed" min="0" max="4" step="0.1" value="1">
+    </div>
+    <label class="checkbox">
+      <input type="checkbox" id="chkFollow"> Seguir objeto selecionado com a câmera
+    </label>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Gravidade</div>
+    <div class="control">
+      <label>Constante gravitacional (G) <span id="valG">1.00</span></label>
+      <input type="range" id="sldG" min="0" max="10" step="0.01" value="1">
+    </div>
+    <div class="control">
+      <label>Amortecimento (softening) <span id="valSoft">12</span></label>
+      <input type="range" id="sldSoft" min="0" max="80" step="1" value="12">
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Novo objeto (arraste para lançar)</div>
+    <div class="control">
+      <label>Massa <span id="valMass">10</span></label>
+      <input type="range" id="sldMass" min="0.5" max="200" step="0.5" value="10">
+    </div>
+    <div class="control">
+      <label>Tamanho (raio) <span id="valRadius">10</span></label>
+      <input type="range" id="sldRadius" min="2" max="60" step="1" value="10">
+    </div>
+    <div class="control">
+      <label>Escala da velocidade inicial <span id="valVel">0.6</span></label>
+      <input type="range" id="sldVel" min="0.1" max="3" step="0.05" value="0.6">
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Visual</div>
+    <label class="checkbox"><input type="checkbox" id="chkTrails" checked> Trilhas das órbitas</label>
+    <label class="checkbox"><input type="checkbox" id="chkVectors" checked> Vetores de velocidade</label>
+    <label class="checkbox"><input type="checkbox" id="chkInfo" checked> Rótulos nos corpos</label>
+    <label class="checkbox"><input type="checkbox" id="chkGrid" checked> Grade espacial</label>
+    <div class="control">
+      <label>Zoom <span id="valZoom">1.0×</span></label>
+      <input type="range" id="sldZoom" min="0.1" max="6" step="0.05" value="1">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:6px;">
+      <button id="btnZoomIn" class="btn btn-small">+ Aproximar</button>
+      <button id="btnZoomOut" class="btn btn-small">− Afastar</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Cenários prontos</div>
+    <div class="preset-grid">
+      <button class="preset" data-preset="two">Dois corpos orbitando</button>
+      <button class="preset" data-preset="system">Sistema planetário</button>
+      <button class="preset" data-preset="three">Três corpos</button>
+      <button class="preset" data-preset="collision">Colisão de planetas</button>
+      <button class="preset" data-preset="blackhole">Buraco negro</button>
+      <button class="preset" data-preset="chaotic">Sistema caótico</button>
+    </div>
+  </div>
+
+  <div class="section inspector-section">
+    <div class="section-title">Objeto selecionado</div>
+    <div class="selected-name" id="selectedName">Nenhum</div>
+    <div id="inspectorInfo"><span class="muted">Clique em um objeto para ver detalhes.</span></div>
+    <button id="btnDelete" class="btn btn-danger btn-small" style="margin-top:10px;">Excluir selecionado</button>
+  </div>
+
+  <div class="hint">
+    <strong>Dicas:</strong> Clique no cenário para adicionar um objeto · Arraste o mouse para definir a velocidade inicial · Clique em um corpo para selecionar e arrastá-lo · Botão direito arrasta a câmera · Rodinha do mouse dá zoom · Tecla Delete exclui o selecionado
+  </div>
+</aside>
+
+<script>
+/* ============================================================
+   GravSim 2D — Simulador de gravidade newtoniana (single file)
+   ============================================================ */
+
+(function(){
+  'use strict';
+
+  // -------------------- Referências DOM --------------------
+  const canvas   = document.getElementById('simCanvas');
+  const ctx      = canvas.getContext('2d', { alpha: false });
+  const els = {
+    fps: document.getElementById('fps'),
+    bodyCount: document.getElementById('bodyCount'),
+    gVal: document.getElementById('gVal'),
+    valSpeed: document.getElementById('valSpeed'),
+    valG: document.getElementById('valG'),
+    valSoft: document.getElementById('valSoft'),
+    valMass: document.getElementById('valMass'),
+    valRadius: document.getElementById('valRadius'),
+    valVel: document.getElementById('valVel'),
+    valZoom: document.getElementById('valZoom'),
+    selectedName: document.getElementById('selectedName'),
+    inspectorInfo: document.getElementById('inspectorInfo'),
+    panel: document.getElementById('panel'),
+    menuToggle: document.getElementById('menu-toggle'),
+  };
+
+  // -------------------- Configuração da simulação --------------------
+  const CONFIG = {
+    paused: false,
+    G: 1,                // constante gravitacional (escala)
+    softening: 12,       // evita singularidade em distâncias muito pequenas
+    speed: 1,            // multiplicador de tempo
+    substeps: 4,         // subpassos por frame (estabilidade numérica)
+    maxBodies: 300,
+    showTrails: true,
+    showVectors: true,
+    showInfo: true,
+    showGrid: true,
+    followSelected: false,
+    trailLength: 45,
+    newBodyMass: 10,
+    newBodyRadius: 10,
+    newBodyVelScale: 0.6,
+    dragVelScale: 0.5,
+  };
+
+  // -------------------- Estado --------------------
+  let width, height, dpr;
+  let camera = { x: 0, y: 0, zoom: 1 };
+  let bodies = [];
+  let selectedId = null;
+
+  let mouse = { x: 0, y: 0 };
+  let worldMouse = { x: 0, y: 0 };
+
+  let isPanning = false;
+  let panStart = { x: 0, y: 0, cx: 0, cy: 0 };
+
+  let isDraggingNew = false;
+  let dragStart = { x: 0, y: 0, wx: 0, wy: 0 };
+
+  let isMovingSelected = false;
+
+  let stars = [];
+  let lastTime = 0;
+  let frames = 0, fpsTime = 0, fps = 0;
+
+  // Paleta de cores espacial
+  const PALETTE = [
+    '#00d4ff','#7b2cff','#ff006e','#ffbe0b','#8ac926',
+    '#f94144','#4cc9f0','#f72585','#ffd166','#06d6a0',
+    '#ab47bc','#26c6da','#ffab40','#69f0ae'
+  ];
+  function randColor(){ return PALETTE[Math.floor(Math.random()*PALETTE.length)]; }
+
+  // -------------------- Classe Corpo --------------------
+  class Body {
+    constructor(x, y, vx, vy, mass, radius, color, label, type){
+      this.id = Date.now() + Math.random();
+      this.x = x; this.y = y;
+      this.vx = vx; this.vy = vy;
+      this.mass = mass;
+      this.radius = radius;
+      this.color = color;
+      this.label = label || '';
+      this.type = type || (mass > 70 ? 'star' : mass > 25 ? 'planet' : 'asteroid');
+      this.fixed = false;
+      this.dead = false;
+      this.trail = [];
+      this.ax = 0; this.ay = 0;
+    }
+    get speed(){ return Math.hypot(this.vx, this.vy); }
+    get ke(){ return 0.5 * this.mass * this.speed * this.speed; }
+  }
+
+  // -------------------- Tela / redimensionamento --------------------
+  function resize(){
+    dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width  = Math.max(1, rect.width  * dpr);
+    canvas.height = Math.max(1, rect.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    width  = rect.width;
+    height = rect.height;
+    initStars();
+  }
+  function initStars(){
+    stars = [];
+    const count = Math.floor((width * height) / 7000);
+    for(let i = 0; i < count; i++){
+      stars.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        s: Math.random() * 1.4 + 0.4,
+        a: Math.random()
+      });
+    }
+  }
+
+  // -------------------- Conversão coordenadas --------------------
+  function toWorld(sx, sy){
+    return {
+      x: (sx - width/2 - camera.x) / camera.zoom,
+      y: (sy - height/2 - camera.y) / camera.zoom
+    };
+  }
+  function toScreen(wx, wy){
+    return {
+      x: width/2 + camera.x + wx * camera.zoom,
+      y: height/2 + camera.y + wy * camera.zoom
+    };
+  }
+
+  // -------------------- Gerenciamento de corpos --------------------
+  function addBody(x, y, vx, vy, mass, radius, color, label, type){
+    if(bodies.length >= CONFIG.maxBodies) return null;
+    const b = new Body(x, y, vx, vy, mass, radius, color || randColor(), label, type);
+    bodies.push(b);
+    return b;
+  }
+  function clearBodies(){
+    bodies = [];
+    selectedId = null;
+    updateInspector(null);
+    updateStats();
+  }
+  function resetSim(){
+    clearBodies();
+    camera = { x: 0, y: 0, zoom: 1 };
+    document.getElementById('sldZoom').value = 1;
+    updateZoomLabel();
+  }
+
+  function findBodyAt(wx, wy){
+    let hit = null, best = Infinity;
+    for(const b of bodies){
+      const d = Math.hypot(b.x - wx, b.y - wy);
+      if(d < b.radius && d < best){ best = d; hit = b; }
+    }
+    return hit;
+  }
+  function selectBody(b){
+    selectedId = b ? b.id : null;
+    updateInspector(b);
+    els.selectedName.textContent = b ? (b.label || 'Corpo #' + Math.floor(b.id)) : 'Nenhum';
+  }
+  function deleteSelected(){
+    if(!selectedId) return;
+    bodies = bodies.filter(b => b.id !== selectedId);
+    selectedId = null;
+    updateInspector(null);
+    els.selectedName.textContent = 'Nenhum';
+    updateStats();
+  }
+
+  // -------------------- Física --------------------
+  function computeAccelerations(){
+    const G = CONFIG.G;
+    const soft = CONFIG.softening;
+    for(let i = 0; i < bodies.length; i++){
+      const b = bodies[i];
+      if(b.fixed){ b.ax = 0; b.ay = 0; continue; }
+      let ax = 0, ay = 0;
+      for(let j = 0; j < bodies.length; j++){
+        if(i === j) continue;
+        const o = bodies[j];
+        const dx = o.x - b.x;
+        const dy = o.y - b.y;
+        const r2 = dx*dx + dy*dy + soft*soft;
+        const invR3 = 1.0 / (r2 * Math.sqrt(r2));
+        const factor = G * o.mass * invR3;   // G * m / r^3
+        ax += factor * dx;
+        ay += factor * dy;
+      }
+      b.ax = ax; b.ay = ay;
+    }
+  }
+
+  function resolveCollisions(){
+    for(let i = 0; i < bodies.length; i++){
+      const a = bodies[i];
+      if(a.dead || a.fixed) continue;
+      for(let j = i + 1; j < bodies.length; j++){
+        const b = bodies[j];
+        if(b.dead) continue;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.hypot(dx, dy);
+        const minDist = a.radius + b.radius;
+        if(dist < minDist){
+          // Fusão por acréscimo com conservação do momento linear
+          const m1 = a.mass, m2 = b.mass;
+          const mt = m1 + m2;
+          a.vx = (a.vx * m1 + b.vx * m2) / mt;
+          a.vy = (a.vy * m1 + b.vy * m2) / mt;
+          a.mass = mt;
+          a.radius = Math.sqrt(a.radius*a.radius + b.radius*b.radius) * 1.05;
+          a.x = (a.x * m1 + b.x * m2) / mt;
+          a.y = (a.y * m1 + b.y * m2) / mt;
+          if(a.mass > 70) a.type = 'star'; else if(a.mass > 25) a.type = 'planet';
+          b.dead = true;
+          if(selectedId === b.id) selectedId = null;
+        }
+      }
+    }
+    bodies = bodies.filter(b => !b.dead);
+    if(selectedId && !bodies.find(b => b.id === selectedId)) selectedId = null;
+  }
+
+  function updateTrails(){
+    for(const b of bodies){
+      b.trail.push({ x: b.x, y: b.y });
+      if(b.trail.length > CONFIG.trailLength) b.trail.shift();
+    }
+  }
+
+  function followCamera(){
+    if(!selectedId) return;
+    const b = bodies.find(x => x.id === selectedId);
+    if(!b) return;
+    const tx = width/2 - b.x * camera.zoom;
+    const ty = height/2 - b.y * camera.zoom;
+    camera.x += (tx - camera.x) * 0.12;
+    camera.y += (ty - camera.y) * 0.12;
+  }
+
+  function updatePhysics(dt){
+    if(CONFIG.paused) return;
+    const sub = CONFIG.substeps;
+    const step = dt / sub;
+    for(let s = 0; s < sub; s++){
+      computeAccelerations();
+      for(const b of bodies){
+        if(b.fixed) continue;
+        b.vx += b.ax * step * CONFIG.speed;
+        b.vy += b.ay * step * CONFIG.speed;
+        b.x  += b.vx * step * CONFIG.speed;
+        b.y  += b.vy * step * CONFIG.speed;
+      }
+      resolveCollisions();
+    }
+    updateTrails();
+    if(CONFIG.followSelected) followCamera();
+  }
+
+  // -------------------- Desenho --------------------
+  function drawStars(){
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    for(const s of stars){
+      ctx.globalAlpha = s.a;
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.s, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  function drawGrid(){
+    const step = 120;
+    const range = 2500;
+    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+    ctx.lineWidth = 1 / camera.zoom;
+    for(let g = -range; g <= range; g += step){
+      ctx.beginPath(); ctx.moveTo(g, -range); ctx.lineTo(g, range); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-range, g); ctx.lineTo(range, g); ctx.stroke();
+    }
+    // eixos
+    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+    ctx.beginPath(); ctx.moveTo(-range, 0); ctx.lineTo(range, 0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, -range); ctx.lineTo(0, range); ctx.stroke();
+  }
+
+  function drawTrail(b){
+    if(b.trail.length < 2) return;
+    ctx.beginPath();
+    ctx.moveTo(b.trail[0].x, b.trail[0].y);
+    for(let i = 1; i < b.trail.length; i++){
+      ctx.lineTo(b.trail[i].x, b.trail[i].y);
+    }
+    ctx.strokeStyle = b.color;
+    ctx.globalAlpha = 0.32;
+    ctx.lineWidth = 1.2 / camera.zoom;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  function drawBody(b){
+    const r = b.radius * camera.zoom;
+    if(r < 0.35) return;
+    ctx.save();
+    ctx.translate(b.x, b.y);
+
+    // brilho (glow)
+    const glow = Math.min(r * 0.9, 60);
+    ctx.shadowColor = b.color;
+    ctx.shadowBlur = (b.type === 'star' || b.mass > 60) ? glow * 1.5 : glow;
+
+    ctx.fillStyle = b.color;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2); ctx.fill();
+
+    ctx.shadowBlur = 0;
+
+    // detalhe dos planetas (anel interno)
+    if(b.type === 'planet'){
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 1 / camera.zoom;
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.7, 0, Math.PI*2); ctx.stroke();
+    }
+    // aparência de buraco negro
+    if(b.type === 'blackhole'){
+      ctx.fillStyle = '#030307';
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.5, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = 'rgba(120,180,255,0.4)';
+      ctx.lineWidth = 2 / camera.zoom;
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.92, 0, Math.PI*2); ctx.stroke();
+    }
+
+    // anel de seleção
+    if(selectedId === b.id){
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2 / camera.zoom;
+      ctx.beginPath(); ctx.arc(0, 0, r + 5, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, r + 11, 0, Math.PI*2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawVector(b){
+    const scale = 3.0 * camera.zoom;
+    const vx = b.vx * scale;
+    const vy = b.vy * scale;
+    const len = Math.hypot(vx, vy);
+    if(len < 0.6) return;
+
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5 / camera.zoom;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(vx, vy); ctx.stroke();
+
+    // seta
+    const ang = Math.atan2(vy, vx);
+    const h = 7 / camera.zoom;
+    ctx.beginPath();
+    ctx.moveTo(vx, vy);
+    ctx.lineTo(vx - h*Math.cos(ang - 0.4), vy - h*Math.sin(ang - 0.4));
+    ctx.lineTo(vx - h*Math.cos(ang + 0.4), vy - h*Math.sin(ang + 0.4));
+    ctx.closePath();
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawLabel(b){
+    if(!CONFIG.showInfo) return;
+    const r = b.radius * camera.zoom;
+    if(r < 1) return;
+    ctx.save();
+    ctx.translate(b.x, b.y - r - 7);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '11px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(b.label || 'Corpo', 0, 0);
+    ctx.font = '10px ui-monospace, monospace';
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.fillText('v:' + b.speed.toFixed(1), 0, 13);
+    ctx.restore();
+  }
+
+  function drawDragPreview(){
+    if(!isDraggingNew) return;
+    const x0 = dragStart.x, y0 = dragStart.y;
+    const x1 = mouse.x, y1 = mouse.y;
+    const dx = x1 - x0, dy = y1 - y0;
+    const len = Math.hypot(dx, dy);
+    if(len < 1) return;
+
+    ctx.save();
+    ctx.strokeStyle = varSafe('--accent', '#00d4ff');
+    ctx.lineWidth = 2;
+    ctx.setLineDash([7, 5]);
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // seta de direção
+    const ang = Math.atan2(dy, dx);
+    const h = 10;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x1 - h*Math.cos(ang - 0.5), y1 - h*Math.sin(ang - 0.5));
+    ctx.lineTo(x1 - h*Math.cos(ang + 0.5), y1 - h*Math.sin(ang + 0.5));
+    ctx.closePath();
+    ctx.fillStyle = '#00d4ff';
+    ctx.fill();
+
+    // corpo fantasma no ponto inicial
+    ctx.fillStyle = 'rgba(0,212,255,0.22)';
+    ctx.beginPath(); ctx.arc(x0, y0, CONFIG.newBodyRadius, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#00d4ff';
+    ctx.lineWidth = 1 / camera.zoom;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function draw(){
+    // fundo do espaço
+    ctx.fillStyle = '#040408';
+    ctx.fillRect(0, 0, width, height);
+    drawStars();
+
+    // mundo com câmera
+    ctx.save();
+    ctx.translate(width/2 + camera.x, height/2 + camera.y);
+    ctx.scale(camera.zoom, camera.zoom);
+
+    if(CONFIG.showGrid) drawGrid();
+    if(CONFIG.showTrails){
+      for(const b of bodies) drawTrail(b);
+    }
+    for(const b of bodies) drawBody(b);
+    if(CONFIG.showVectors){
+      for(const b of bodies) drawVector(b);
+    }
+    if(CONFIG.showInfo){
+      for(const b of bodies) drawLabel(b);
+    }
+    ctx.restore();
+
+    // pré-visualização de arrasto (espaço de tela)
+    drawDragPreview();
+  }
+
+  // pequena utilidade para ler variável CSS em JS (fallback)
+  function varSafe(name, fallback){
+    try{ return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback; }
+    catch(e){ return fallback; }
+  }
+
+  // -------------------- Inspector / UI --------------------
+  function updateInspector(b){
+    const info = els.inspectorInfo;
+    if(!b){
+      info.innerHTML = '<span class="muted">Clique em um objeto para ver detalhes.</span>';
+      return;
+    }
+    const nearby = bodies.filter(o => o.id !== b.id &&
+      Math.hypot(o.x - b.x, o.y - b.y) < 400).length;
+    info.innerHTML = `
+      <table class="info-table">
+        <tr><td class="k">Massa</td><td class="v">${b.mass.toFixed(2)}</td></tr>
+        <tr><td class="k">Velocidade</td><td class="v">${b.speed.toFixed(3)}</td></tr>
+        <tr><td class="k">Posição X</td><td class="v">${b.x.toFixed(2)}</td></tr>
+        <tr><td class="k">Posição Y</td><td class="v">${b.y.toFixed(2)}</td></tr>
+        <tr><td class="k">Tamanho (raio)</td><td class="v">${b.radius.toFixed(2)}</td></tr>
+        <tr><td class="k">Tipo</td><td class="v">${b.type}</td></tr>
+        <tr><td class="k">Objetos próximos</td><td class="v">${nearby}</td></tr>
+        <tr><td class="k">Energia cinética</td><td class="v">${b.ke.toFixed(2)}</td></tr>
+      </table>`;
+  }
+  function updateStats(){
+    els.fps.textContent = fps;
+    els.bodyCount.textContent = bodies.length;
+    els.gVal.textContent = CONFIG.G.toFixed(2);
+  }
+  function updateZoomLabel(){
+    els.valZoom.textContent = camera.zoom.toFixed(2) + '×';
+  }
+
+  // -------------------- Cenários prontos --------------------
+  function loadPreset(name){
+    clearBodies();
+    camera = { x: 0, y: 0, zoom: 1 };
+    const G = CONFIG.G;
+
+    if(name === 'two'){
+      // Dois corpos orbitando um centro massivo
+      addBody(0, 0, 0, 0, 260, 24, '#ffd166', 'Estrela');
+      const d = 250;
+      const v = Math.sqrt(G * 260 / d);
+      addBody(d, 0, 0, -v, 8, 11, '#4cc9f0', 'Planeta A');
+      addBody(-d, 0, 0, v, 8, 11, '#00d4ff', 'Planeta B');
+    }
+    else if(name === 'system'){
+      // Sistema planetário: estrela central + planetas em órbitas
+      addBody(0, 0, 0, 0, 650, 30, '#ffbe0b', 'Sol');
+      const planets = [
+        [75,  3,  6, '#ff006e'],
+        [140, 5,  8, '#4cc9f0'],
+        [220, 7,  10, '#8ac926'],
+        [310, 4,  7, '#7b2cff'],
+        [420, 6,  9, '#f94144'],
+      ];
+      for(const [d, m, r, c] of planets){
+        const v = Math.sqrt(G * 650 / d);
+        addBody(d, 0, 0, -v, m, r, c, 'Planeta');
+      }
+    }
+    else if(name === 'three'){
+      // Sistema de três corpos (triângulo, velocidade tangencial)
+      const m = 55, r = 200;
+      const angles = [0, 2*Math.PI/3, 4*Math.PI/3];
+      angles.forEach((a, i) => {
+        const x = Math.cos(a) * r;
+        const y = Math.sin(a) * r;
+        const v = Math.sqrt(G * m * 2 / r) * 0.9;
+        addBody(x, y, -Math.sin(a) * v, Math.cos(a) * v, m, 12, PALETTE[i], 'Corpo ' + (i+1));
+      });
+    }
+    else if(name === 'collision'){
+      // Colisão entre planetas
+      addBody(-210, 0, 3.2, 0, 55, 17, '#f94144', 'Planeta A');
+      addBody(210, 0, -3.2, 0, 55, 17, '#4cc9f0', 'Planeta B');
+    }
+    else if(name === 'blackhole'){
+      // Buraco negro com objetos em órbita
+      addBody(0, 0, 0, 0, 1400, 18, '#0a0a0f', 'Buraco Negro', 'blackhole');
+      for(let i = 0; i < 14; i++){
+        const a = Math.random() * Math.PI * 2;
+        const d = 120 + Math.random() * 220;
+        const v = Math.sqrt(G * 1400 / d) * (0.8 + Math.random() * 0.6);
+        addBody(Math.cos(a)*d, Math.sin(a)*d,
+                -Math.sin(a)*v, Math.cos(a)*v,
+                1 + Math.random()*4, 4 + Math.random()*6, randColor(), 'Órbita');
+      }
+    }
+    else if(name === 'chaotic'){
+      // Sistema caótico com vários corpos
+      for(let i = 0; i < 36; i++){
+        addBody(
+          (Math.random()-0.5) * 520,
+          (Math.random()-0.5) * 520,
+          (Math.random()-0.5) * 22,
+          (Math.random()-0.5) * 22,
+          2 + Math.random()*18,
+          4 + Math.random()*11,
+          randColor()
+        );
+      }
+    }
+
+    document.getElementById('sldZoom').value = 1;
+    updateZoomLabel();
+    selectBody(null);
+    updateStats();
+  }
+
+  // -------------------- Controles --------------------
+  function bindControls(){
+    const $ = id => document.getElementById(id);
+
+    // Pausar / continuar
+    $('btnPause').onclick = () => {
+      CONFIG.paused = !CONFIG.paused;
+      $('btnPause').textContent = CONFIG.paused ? '▶ Continuar' : '⏸ Pausar';
+    };
+
+    // Reiniciar
+    $('btnReset').onclick = resetSim;
+
+    // Limpar tudo
+    $('btnClear').onclick = clearBodies;
+
+    // Excluir selecionado
+    $('btnDelete').onclick = deleteSelected;
+
+    // Zoom
+    $('btnZoomIn').onclick = () => { camera.zoom = Math.min(6, camera.zoom * 1.25); syncZoom(); };
+    $('btnZoomOut').onclick = () => { camera.zoom = Math.max(0.15, camera.zoom / 1.25); syncZoom(); };
+
+    function syncZoom(){
+      $('sldZoom').value = camera.zoom;
+      updateZoomLabel();
+    }
+
+    // Sliders genéricos
+    function wire(id, key, fmt){
+      const el = $(id), valEl = $(id.replace('sld', 'val'));
+      el.oninput = () => {
+        CONFIG[key] = parseFloat(el.value);
+        valEl.textContent = fmt(el.value);
+        if(key === 'zoom'){ camera.zoom = CONFIG[key]; updateZoomLabel(); }
+      };
+    }
+    wire('sldSpeed', 'speed', v => v + '×');
+    wire('sldG', 'G', v => v);
+    wire('sldSoft', 'softening', v => v);
+    wire('sldMass', 'newBodyMass', v => v);
+    wire('sldRadius', 'newBodyRadius', v => v);
+    wire('sldVel', 'newBodyVelScale', v => v);
+    wire('sldZoom', 'zoom', v => v + '×');
+
+    // Checkboxes
+    const chkMap = {
+      chkTrails: 'showTrails',
+      chkVectors: 'showVectors',
+      chkInfo: 'showInfo',
+      chkGrid: 'showGrid',
+      chkFollow: 'followSelected',
+    };
+    Object.entries(chkMap).forEach(([id, key]) => {
+      const el = $(id);
+      el.checked = CONFIG[key];
+      el.onchange = e => { CONFIG[key] = e.target.checked; };
+    });
+
+    // Cenários
+    document.querySelectorAll('.preset').forEach(btn => {
+      btn.onclick = () => loadPreset(btn.dataset.preset);
+    });
+
+    // Menu mobile
+    els.menuToggle.onclick = () => els.panel.classList.toggle('open');
+  }
+
+  // -------------------- Entrada (mouse / teclado / wheel) --------------------
+  function bindInput(){
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+    // roda do mouse: zoom centrado no cursor
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const before = toWorld(mx, my);
+      const factor = e.deltaY > 0 ? 0.9 : 1.1;
+      camera.zoom = Math.min(6, Math.max(0.15, camera.zoom * factor));
+      // mantém o ponto sob o cursor fixo na tela após o zoom
+      camera.x = mx - width/2 - before.x * camera.zoom;
+      camera.y = my - height/2 - before.y * camera.zoom;
+      document.getElementById('sldZoom').value = camera.zoom;
+      updateZoomLabel();
+    }, { passive: false });
+
+    canvas.addEventListener('mousedown', e => {
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const w = toWorld(mx, my);
+
+      if(e.button === 2){ // direito: pan da câmera
+        isPanning = true;
+        panStart = { x: e.clientX, y: e.clientY, cx: camera.x, cy: camera.y };
+        return;
+      }
+      if(e.button !== 0) return;
+
+      const hit = findBodyAt(w.x, w.y);
+      if(hit){
+        selectBody(hit);
+        isMovingSelected = true;
+      } else {
+        selectBody(null);
+        isDraggingNew = true;
+        dragStart = { x: mx, y: my, wx: w.x, wy: w.y };
+      }
+    });
+
+    window.addEventListener('mousemove', e => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+      const rect = canvas.getBoundingClientRect();
+      worldMouse = toWorld(e.clientX - rect.left, e.clientY - rect.top);
+
+      if(isPanning){
+        camera.x = panStart.cx + (e.clientX - panStart.x);
+        camera.y = panStart.cy + (e.clientY - panStart.y);
+        return;
+      }
+      if(isMovingSelected){
+        const b = bodies.find(x => x.id === selectedId);
+        if(b){
+          b.x = worldMouse.x;
+          b.y = worldMouse.y;
+          b.vx = 0; b.vy = 0;
+        }
+        return;
+      }
+    });
+
+    window.addEventListener('mouseup', e => {
+      if(e.button === 0){
+        if(isDraggingNew){
+          const rect = canvas.getBoundingClientRect();
+          const mx = e.clientX - rect.left;
+          const my = e.clientY - rect.top;
+          const w = toWorld(mx, my);
+          const dist = Math.hypot(w.x - dragStart.wx, w.y - dragStart.wy);
+
+          if(dist > 3 && bodies.length < CONFIG.maxBodies){
+            const vx = (w.x - dragStart.wx) * CONFIG.dragVelScale * CONFIG.newBodyVelScale;
+            const vy = (w.y - dragStart.wy) * CONFIG.dragVelScale * CONFIG.newBodyVelScale;
+            addBody(dragStart.wx, dragStart.wy, vx, vy,
+                    CONFIG.newBodyMass, CONFIG.newBodyRadius, randColor(), 'Novo');
+            updateStats();
+          }
+          isDraggingNew = false;
+        }
+        isMovingSelected = false;
+      }
+      if(e.button === 2) isPanning = false;
+    });
+
+    // teclas
+    window.addEventListener('keydown', e => {
+      if(e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
+      if(e.key === 'p' || e.key === 'P') $('btnPause').click();
+      if(e.key === 'r' || e.key === 'R') resetSim();
+      if(e.key === 'c' || e.key === 'C') clearBodies();
+    });
+
+    window.addEventListener('resize', resize);
+  }
+
+  // -------------------- Loop principal --------------------
+  function loop(now){
+    if(!lastTime) lastTime = now;
+    let dt = now - lastTime;
+    lastTime = now;
+    dt = Math.min(dt, 60); // evita explosão ao voltar de aba inativa
+
+    updatePhysics(dt);
+    draw();
+
+    frames++;
+    fpsTime += dt;
+    if(fpsTime >= 1000){
+      fps = frames;
+      frames = 0;
+      fpsTime -= 1000;
+      updateStats();
+    }
+    requestAnimationFrame(loop);
+  }
+
+  // -------------------- Inicialização --------------------
+  function init(){
+    resize();
+    bindControls();
+    bindInput();
+    loadPreset('two');
+    lastTime = performance.now();
+    requestAnimationFrame(loop);
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
